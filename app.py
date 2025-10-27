@@ -3,6 +3,10 @@ from langchain.prompts import PromptTemplate
 from langchain_groq import ChatGroq
 from langchain.chains.summarize import load_summarize_chain
 from langchain.document_loaders import YoutubeLoader,UnstructuredURLLoader
+from youtube_transcript_api import YouTubeTranscriptApi
+import requests,re
+from bs4 import BeautifulSoup
+from langchain.schema import Document
 
 
 ## Streamlit APP
@@ -99,25 +103,41 @@ if summarize_btn:
             with st.spinner("🧠 Analyzing and summarizing... please wait ⏳"):
                 ## loading the website or yt video data
                 ## Model using Groq API
-                llm = ChatGroq(model="llama-3.3-70b-versatile",api_key=groq_api_key)
+                llm = ChatGroq(model="llama-3.3-70b-versatile",groq_api_key=groq_api_key)
 
 
-                if "youtube.com" in generic_url:
-                    # Clean URL parameters like &t=249s, &list=PL...
+                if "youtube.com" in generic_url or "youtu.be" in generic_url:
+                    # Clean URL parameters
                     if "&" in generic_url:
                         generic_url = generic_url.split("&")[0]
 
+                    if "v=" in generic_url:
+                        video_id = generic_url.split("v=")[-1]
+                    else:
+                        video_id = generic_url.split("/")[-1]
+
+                    
                     try:
-                        loader = YoutubeLoader.from_youtube_url(
-                            generic_url, add_video_info=True
-                        )
-                        docs = loader.load()
+                        #  Attempt transcript API first
+                        transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=["en"])
+                        text = " ".join([t["text"] for t in transcript])
+                        docs = [Document(page_content=text)]
                     except Exception as e:
-                        st.error(
-                            f"Unable to fetch transcript. This video may be private, region-locked, "
-                            f"or YouTube API temporarily blocked access.\n\nError details: {e}"
-                        )
-                        st.stop()
+                        st.warning("⚠️ Could not fetch transcript via API — switching to fallback HTML extraction.")
+                        try:
+                            html = requests.get(generic_url).text
+                            text_matches = re.findall(r'\"text\":\"(.*?)\"', html)
+                            if text_matches:
+                                text = " ".join(text_matches)
+                            else:
+                                soup = BeautifulSoup(html, "html.parser")
+                                text = soup.get_text()
+                            docs = [Document(page_content=text)]
+                        except Exception as e2:
+                            st.error(f"Transcript unavailable for this video.\n\nPrimary error: {e}\nFallback error: {e2}")
+                            st.stop()
+
+
                 else:
                     loader = UnstructuredURLLoader(urls=[generic_url],ssl_verify=False,
                                                    headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_5_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"})
