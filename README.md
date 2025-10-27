@@ -6,7 +6,7 @@ A LangChain + Groq powered Streamlit application that automatically summarizes Y
 ## 🖼️ Application Preview
 
 #### Home Screen
-![Home UI](images/main_page.png) 
+![Home UI](images/main.png) 
 
 #### Summary Output
 ![Summary Output](images/output.png) 
